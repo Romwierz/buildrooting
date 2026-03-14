@@ -1,0 +1,25 @@
+# Source this file to use the functions below. They expect to be run in BR root directory.
+
+if [[ $SHELL == /usr/bin/zsh ]]; then
+    _br_confirm() {
+        read -q "ans?Save config? (y/n) "
+        echo
+        [[ $ans == y ]]
+    }
+
+    br-nconfig() { make nconfig && _br_confirm && make savedefconfig; }
+    br-linux-config() { make linux-nconfig && _br_confirm && make linux-update-defconfig; }
+    br-busybox-config() { make busybox-menuconfig && _br_confirm && make busybox-update-config; }
+fi
+
+if [[ $SHELL == /usr/bin/bash ]]; then
+    _br_confirm() {
+        read -n 1 -p "Save config? (y/n) " ans
+        echo
+        [[ $ans == y ]]
+    }
+
+    br-nconfig() { make nconfig && _br_confirm && make savedefconfig; }
+    br-linux-config() { make linux-nconfig && _br_confirm && make linux-update-defconfig; }
+    br-busybox-config() { make busybox-menuconfig && _br_confirm && make busybox-update-config; }
+fi
