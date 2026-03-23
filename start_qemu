@@ -1,6 +1,6 @@
 #!/bin/env sh
 
-# On running the script, append addtional options and arguments if needed
+# On running the script, append additional options and arguments if needed
 output/host/bin/qemu-system-aarch64 -M virt -cpu cortex-a53 -nographic -smp 1 -kernel output/images/Image \
 "$@"
 
