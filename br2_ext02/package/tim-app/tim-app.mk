@@ -14,5 +14,6 @@ $(TARGET_MAKE_ENV) $(MAKE) $(TARGET_CONFIGURE_OPTS) demo -C $(@D)
 endef
 define TIM_APP_INSTALL_TARGET_CMDS
    $(INSTALL) -D -m 0755 $(@D)/user_tim1 $(TARGET_DIR)/usr/bin
+   $(INSTALL) -D -m 0755 $(@D)/user_tim2 $(TARGET_DIR)/usr/bin
 endef
 $(eval $(generic-package))
