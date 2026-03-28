@@ -26,6 +26,7 @@ MODULE_LICENSE("GPL v2");
 #include "wzab_tim1.h"
 
 #define DEVICE_NAME "wzab_tim1"
+#define DEVICE_NR 64
 
 #define PCI_VENDOR_ID_WZAB 0xabba
 #define PCI_DEVICE_ID_WZAB_WZTIM1 0x0123
@@ -33,6 +34,10 @@ MODULE_LICENSE("GPL v2");
 #define DRV_MSG_PREFIX "drv_tim2: "
 
 #define BAR0 0
+
+struct timdev {
+    struct pci_dev * pdev;
+} mydev;
 
 static const struct pci_device_id tim2_ids_tbl[] = {
     {PCI_DEVICE(PCI_VENDOR_ID_WZAB, PCI_DEVICE_ID_WZAB_WZTIM1)},
@@ -46,7 +51,16 @@ static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
     void __iomem * ptr_bar0;
     unsigned long regs_phy_addr;
     volatile WzTim1Regs * regs;
+
+    mydev.pdev = pdev;
     
+    // Create and register a char device
+    status = register_chrdev(DEVICE_NR, DEVICE_NAME, &fops);
+    if(status < 0) {
+        printk(DRV_MSG_PREFIX "Can't allocate device number, aborting\n");
+        goto err1;
+    }
+
     // Enable access to the memory space of the device
     status = pcim_enable_device(pdev);
     if(status) {
@@ -76,6 +90,7 @@ err1:
 
 static void tim2_remove(struct pci_dev * pdev) {
     printk(KERN_ALERT "Removing the device\n");
+    unregister_chrdev(DEVICE_NR, DEVICE_NAME);
 }
 
 struct pci_driver my_driver = {
