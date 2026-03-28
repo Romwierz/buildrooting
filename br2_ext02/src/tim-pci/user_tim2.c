@@ -27,18 +27,21 @@ int main(int argc, char *argv[])
     int fd;
     WzTim1Regs * volatile regs;
     uint64_t res;
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s sampling_period_[ns]\n", argv[0]);
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s [device_file] [sampling_period_ns]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-    uint64_t period=atoi(argv[1]);
-    fd=open("/dev/my_tim0",O_RDWR);
-    assert(fd>=0);
-    regs=(WzTim1Regs *) mmap(0,0x1000,PROT_READ | PROT_WRITE,MAP_SHARED,fd,0);
+    uint64_t period = atoi(argv[2]);
+
+    fd = open(argv[1], O_RDWR);
+    assert(fd >= 0);
+
+    regs = (WzTim1Regs *) mmap(0, MY_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     assert(regs != MAP_FAILED);
     //Check if the timer is available
     assert(regs->id == 0x7130900d);
     //There should start our code
+    printf("Timer ID=0x%08X\n", regs->id);
 
     int stat_init_val = regs->stat;
     printf("Timer STAT init value: %x\n", stat_init_val);
@@ -65,7 +68,7 @@ int main(int argc, char *argv[])
     // assert(write(fd,&period,8)==8);
 
     //End of our code
-    munmap(regs,0x1000);
+    munmap(regs, MY_PAGE_SIZE);
     close(fd);
 }
 
