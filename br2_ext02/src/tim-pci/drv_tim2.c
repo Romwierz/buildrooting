@@ -44,6 +44,7 @@ MODULE_DEVICE_TABLE(pci, tim2_ids_tbl);
 static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
     int status;
     void __iomem * ptr_bar0;
+    unsigned long regs_phy_addr;
     volatile WzTim1Regs * regs;
     
     // Enable access to the memory space of the device
@@ -54,14 +55,16 @@ static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
         goto err1;
     }
 
-    // Map PCI's BAR0 to the pointer
+    // Get the physical address of timers' registers
+    regs_phy_addr = pci_resource_start(pdev, BAR0);
+    // Map PCI's BAR0 to the pointer (virtual address)
     ptr_bar0 = pcim_iomap(pdev, BAR0, pci_resource_len(pdev, BAR0));
-    if(!ptr_bar0) {
+    if(!regs_phy_addr || !ptr_bar0) {
         dev_err(&pdev->dev, DRV_MSG_PREFIX "Can't map BAR0 of PCI device, aborting\n");
         status = -ENODEV;
         goto err1;
     }
-    printk(KERN_ALERT "Connected registers at %lx\n", ptr_bar0);
+    printk(KERN_ALERT "Connected registers at %lx\n", regs_phy_addr);
 
     regs = (volatile WzTim1Regs *) ptr_bar0;
     printk(KERN_ALERT "Timer ID=0x%08X\n", regs->id);
