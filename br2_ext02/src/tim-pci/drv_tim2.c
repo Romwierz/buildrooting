@@ -37,6 +37,7 @@ MODULE_LICENSE("GPL v2");
 #define BAR0 0
 
 static int tim2_open(struct inode *inode, struct file *file);
+static int tim2_release(struct inode *inode, struct file *file);
 static int tim2_mmap(struct file *file, struct vm_area_struct *vma);
 
 struct timdev {
@@ -54,6 +55,7 @@ static int minor_count = 0;
 
 struct file_operations fops = {
     .open = tim2_open,
+    .release = tim2_release,
     .mmap = tim2_mmap,
 };
 
@@ -74,6 +76,17 @@ static int tim2_open(struct inode *inode, struct file *file) {
         }
     }
     return -ENODEV;
+}
+
+static int tim2_release(struct inode *inode, struct file *file) {
+    struct timdev * mydev = file->private_data;
+    volatile WzTim1Regs * regs = (volatile WzTim1Regs *) mydev->ptr_bar0;
+    printk(KERN_ALERT "Releasing the device with Device Number %d:%d\n",
+            MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr));
+    regs->divh = 0; 
+    regs->divl = 0; // Disable IRQ
+    regs->stat = 0; // Mask interrupt
+    return 0;
 }
 
 // @vma: a pointer to the struct describing virtual memory area
