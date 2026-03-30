@@ -49,6 +49,7 @@ struct timdev {
     void __iomem * ptr_bar0;
     struct list_head list;
     struct cdev cdev;
+    int irq;
 };
 
 LIST_HEAD(device_list);
@@ -71,17 +72,70 @@ MODULE_DEVICE_TABLE(pci, tim2_ids_tbl);
 
 DECLARE_KFIFO(rd_fifo, uint64_t, 128);
 
+/* Queue for reading process */
+DECLARE_WAIT_QUEUE_HEAD(readqueue);
+
+/* Interrupt service routine */
+irqreturn_t tim2_irq(int irq, void * dev_id) {
+    // struct file * file = (struct file *) dev_id;
+    struct timdev * mydev = dev_id;
+    volatile WzTim1Regs * regs = (volatile WzTim1Regs *) mydev->ptr_bar0;
+    // First we check if our device requests interrupt
+    // printk(KERN_INFO "I'm in interrupt!\n");
+    volatile uint32_t status; // Must be volatile to ensure 32-bit access!
+    uint64_t val;
+    status = regs->stat;
+    if(status & 0x80000000) {
+        // printk(KERN_ALERT "Handling IRQ for the device with Device Number %d:%d\n",
+        //         MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr));
+
+        // Yes, our device requests service
+        // Read the counter 
+        val = regs->cntl;
+        val |= ((uint64_t) regs->cnth) << 32;
+        // Put the counter into the FIFO
+        kfifo_put(&rd_fifo, val);
+        // Clear the interrupt
+        regs->cntl = 0;
+        // Wake up the reading process
+        wake_up_interruptible(&readqueue);
+        return IRQ_HANDLED;
+    }
+    return IRQ_NONE; //Our device does not request interrupt
+};
+
 static int tim2_open(struct inode *inode, struct file *file) {
+    int status = 0;
     struct timdev * mydev;
+    volatile WzTim1Regs * regs;
     dev_t dev_nr = inode->i_rdev;
 
     list_for_each_entry(mydev, &device_list, list) {
         if(mydev->dev_nr == dev_nr) {
             file->private_data = mydev;
-            return 0;
+            break;
         }
     }
-    return -ENODEV;
+
+    if(!file->private_data) return -ENODEV;
+    mydev = file->private_data;
+    regs = (volatile WzTim1Regs *) mydev->ptr_bar0;
+
+    printk(KERN_ALERT "Opened file for the device with Device Number %d:%d\n",
+            MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr));
+
+    // nonseekable_open(inode, file);
+    kfifo_reset(&rd_fifo); // Remove 
+
+    // The last parameter is a cookie passed to the handler function so it can be used to determine the device
+    status = request_irq(mydev->irq, tim2_irq, IRQF_SHARED | IRQF_NO_THREAD , DEVICE_NAME, mydev);
+    if(status) {
+        printk (KERN_INFO "Can't connect irq %i error: %d\n", mydev->irq, status);
+        mydev->irq = -1;
+    }
+    regs->stat = 1; // Unmask interrupts
+
+    return status;
 }
 
 static int tim2_release(struct inode *inode, struct file *file) {
@@ -92,12 +146,25 @@ static int tim2_release(struct inode *inode, struct file *file) {
     regs->divh = 0; 
     regs->divl = 0; // Disable IRQ
     regs->stat = 0; // Mask interrupt
+    if(mydev->irq >= 0) free_irq(mydev->irq, mydev); // Free interrupt
     return 0;
 }
 
 ssize_t tim2_read(struct file *file, char __user *buf, size_t count, loff_t *off) {
+    struct timdev * mydev = file->private_data;
     uint64_t val;
     if(count != 8) return -EINVAL; // Only 8-byte accesses allowed
+
+    {
+        ssize_t res;
+        // Interrupts are on, so we should sleep and wait for interrupt
+        res = wait_event_interruptible(readqueue, !kfifo_is_empty(&rd_fifo));
+        if(res) return res; // Signal received!
+    }
+
+    printk(KERN_ALERT "Reading from the device with Device Number %d:%d\n",
+            MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr));
+
     // Read pointers 
     if(!kfifo_get(&rd_fifo, &val)) return -EINVAL; 
     if(copy_to_user(buf, &val, 8)) return -EFAULT;
@@ -109,7 +176,12 @@ ssize_t tim2_write(struct file *file, const char __user *buf, size_t count, loff
     uint64_t val;
     int res = 0; // Workaround. In fact wwe should check the returned value...
     volatile WzTim1Regs * regs = (volatile WzTim1Regs *) mydev->ptr_bar0;
+
     if(count != 8) return -EINVAL; // Only 8-byte access allowed
+
+    printk(KERN_ALERT "Writing to the device with Device Number %d:%d\n",
+            MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr));
+
     res = __copy_from_user(&val, buf, 8);
     regs->divh = val >> 32;
     regs->divl = val & 0xffffffff;  
@@ -139,12 +211,16 @@ static int tim2_mmap(struct file *file, struct vm_area_struct *vma) {
         return -status;
     }
 
+    printk(KERN_ALERT "Mapped the registers of the Device Number %d:%d at physical address %lx to %lx\n",
+            MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr), mydev->phys_addr, mydev->ptr_bar0);
+
     return status;
 }
 
 // @ent: an entry from the device id table
 static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
     int status = 0;
+    int irq = 0;
     volatile WzTim1Regs * regs;
     struct timdev * mydev = devm_kzalloc(&pdev->dev, sizeof(*mydev), GFP_KERNEL);
     if(!mydev)
@@ -165,8 +241,19 @@ static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
     printk(KERN_ALERT "Added the device with Device Number %d:%d\n",
             MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr));
 
+    // Assign PCI device to the timer device instance
     mydev->pdev = pdev;
     
+    // Read IRQ number
+    irq = pdev->irq;
+    if(irq < 0) {
+        printk(KERN_ERR "Error reading the IRQ number: %d\n", irq);
+        status = mydev->irq;
+        goto err1;
+    }
+    mydev->irq = irq;
+    printk(KERN_ALERT "Connected IRQ=%d\n", irq);
+
     // Enable access to the memory space of the device
     // todo: if it fails, delete the device from the list, decrement the count, delete cdev
     status = pcim_enable_device(pdev);

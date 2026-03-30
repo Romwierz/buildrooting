@@ -64,26 +64,17 @@ int main(int argc, char *argv[])
     int stat_init_val = regs->stat;
     printf("Timer STAT init value: %x\n", stat_init_val);
 
-    // Mask timer's IRQ
-    CLR_BIT(regs->stat, 0);
-    printf("Timer STAT after clearing bit_0: 0x%016X\n\n", regs->stat);
-
     // Set period
     assert(write(fd, &period, 8) == 8);
 
     // Count to 1000
     for(i = 0; i < count; i++) {
-        // Wait for pending interrupt
-        while (!(regs->stat & 0x80000000));
+        read(fd, &res, 8);
         // Read the time elapsed since last interrupt
-        res = regs->cntl;
-        res |= ((uint64_t) regs->cnth) << 32;
         printf("%d, %ld\n", i, res);
-        // Clear interrupt
-        regs->cntl = 0;
     }
-    // period=0;
-    // assert(write(fd,&period,8)==8);
+    period = 0;
+    assert(write(fd, &period, 8) == 8);
 
     //End of our code
     munmap(regs, MY_PAGE_SIZE);
