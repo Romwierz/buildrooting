@@ -22,5 +22,7 @@ rm -r "${compressed_target_dir}/${tar_ver}.tar.xz"
 
 # Generate BR/.config using repo's defconfig
 # ( cd "$uncompressed_target_dir" && make defconfig BR2_DEFCONFIG=../defconfig )
-echo 'To load the defconfig file run `make defconfig BR2_DEFCONFIG=../defconfig` inside BR root directory.'
+echo "To load the repo's defconfig file run \`make defconfig BR2_DEFCONFIG=../defconfig\` inside BR root directory."
+echo "To load the board's defconfig file run \`make qemu_aarch64_virt_defconfig\` inside BR root directory."
+
 echo 'Make sure that defconfig file was properly loaded into BR/.config before starting the initial compilation !!!'
