@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 compressed_target_dir=.
-uncompressed_target_dir=./buildroot
+uncompressed_target_dir=${1:-./buildroot}
 tar_ver=buildroot-2026.02
 hash=d54b7ffece06ff28cbb81e28e3de74ea405ca6b77c38fbe8b18fa57bef585f8b
 
@@ -15,14 +15,15 @@ if [ ! -d "$uncompressed_target_dir" ]; then
     mkdir "$uncompressed_target_dir" && \
         tar xvf "${tar_ver}.tar.xz" -C "${uncompressed_target_dir}" --strip-components=1
 else
-    echo "Buildroot directory already exists!"
+    echo -n "Buildroot directory already exists! "
+    echo "To create another one, pass directory's name as an argument."
 fi
 
 rm -r "${compressed_target_dir}/${tar_ver}.tar.xz"
 
 # Generate BR/.config using repo's defconfig
 # ( cd "$uncompressed_target_dir" && make defconfig BR2_DEFCONFIG=../defconfig )
-echo "To load the repo's defconfig file run \`make defconfig BR2_DEFCONFIG=../defconfig\` inside BR root directory."
+echo "\nTo load the repo's defconfig file run \`make defconfig BR2_DEFCONFIG=../defconfig\` inside BR root directory."
 echo "To load the board's defconfig file run \`make qemu_aarch64_virt_defconfig\` inside BR root directory."
 
 echo 'Make sure that defconfig file was properly loaded into BR/.config before starting the initial compilation !!!'
